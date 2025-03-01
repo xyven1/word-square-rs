@@ -74,8 +74,7 @@ dependencies = [
 [[package]]
 name = "trie-rs"
 version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f88f4b0a1ebd6c3d16be3e45eb0e8089372ccadd88849b7ca162ba64b5e6f6"
+source = "git+https://github.com/JonahPlusPlus/trie-rs.git?branch=label#aab3ebad5b6634cd429eb09da855c1a88f4d90fb"
 dependencies = [
  "louds-rs",
 ]
