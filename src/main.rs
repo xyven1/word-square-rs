@@ -1,8 +1,7 @@
-use std::{env::args, fmt::Display, fs::read_to_string};
+use std::{collections::HashSet, env::args, fmt::Display, fs::read_to_string};
 
 use trie_rs::{
     inc_search::{self, IncSearch, Position},
-    label::LabelKind,
     set::Trie,
 };
 
@@ -56,7 +55,7 @@ fn main() {
     ) {
         (Some(p), Some(Ok(w)), Some(Ok(h))) => (p, w, h),
         _ => {
-            println!("Usage: ./{command_name} <path> <width> <height>");
+            println!("Usage: ./{command_name} <path> <width> <height> <?unique>");
             return;
         }
     };
@@ -66,7 +65,13 @@ fn main() {
     let mut grid = Grid::new('.', w, h);
 
     let i = std::cell::Cell::new(0);
+    let mut seen = if args_it.next().is_some() {
+        Some(HashSet::with_capacity(w * h))
+    } else {
+        None
+    };
     search(
+        &mut seen,
         &trie,
         inc_search::Position::from(trie.inc_search()),
         &mut vec![inc_search::Position::from(trie.inc_search()); w],
@@ -82,6 +87,7 @@ fn main() {
 }
 
 fn search(
+    seen: &mut Option<HashSet<String>>,
     trie: &Trie<char>,
     h_pos: inc_search::Position,
     v_pos: &mut [inc_search::Position],
@@ -104,20 +110,56 @@ fn search(
     let last_row = current_idx.0 == grid.h - 1;
     let end_of_row = current_idx.1 == grid.w - 1;
     for (c, _) in IncSearch::resume(&trie.0, h_pos).children() {
+        let mut words = Vec::<String>::new();
+
         let mut horiz = IncSearch::resume(&trie.0, h_pos);
-        match horiz.next_kind(c) {
-            Some(LabelKind::PrefixAndExact) => {}
-            Some(LabelKind::Prefix) if !end_of_row => {}
-            Some(LabelKind::Exact) if end_of_row => {}
-            _ => continue,
+        let Some(k) = horiz.next_kind(c) else {
+            continue;
+        };
+        if end_of_row {
+            if !k.is_exact() {
+                continue;
+            }
+            let word = horiz.prefix();
+            if let Some(s) = seen.as_ref() {
+                if s.contains(&word) {
+                    continue;
+                }
+            }
+            words.push(word);
+        } else if !k.is_prefix() {
+            continue; // Simple optimization which cuts off an unnecessary recursion
         }
+
         let mut vert = IncSearch::resume(&trie.0, v_pos[current_idx.1]);
-        match vert.next_kind(c) {
-            Some(LabelKind::PrefixAndExact) => {}
-            Some(LabelKind::Prefix) if !last_row => {}
-            Some(LabelKind::Exact) if last_row => {}
-            _ => continue,
+        let Some(k) = vert.next_kind(c) else { continue };
+        if last_row {
+            if !k.is_exact() {
+                continue;
+            }
+            let word = vert.prefix();
+            if let Some(s) = seen.as_ref() {
+                if s.contains(&word) {
+                    continue;
+                }
+            }
+            words.push(word);
+        } else if !k.is_prefix() {
+            continue; // Simple optimization which cuts off an unnecessary recursion
         }
+
+        if let Some(s) = seen.as_mut() {
+            // This will only happen on the last letter, but must be checked
+            if let [w1, w2] = &words[..] {
+                if w1 == w2 {
+                    continue;
+                }
+            }
+            for word in &words {
+                (*s).insert(word.clone());
+            }
+        }
+
         let h_prefix = if next_idx.1 == 0 {
             Position::from(trie.inc_search())
         } else {
@@ -127,8 +169,15 @@ fn search(
         grid.set(current_idx.0, current_idx.1, *c);
         let old = v_pos[current_idx.1];
         v_pos[current_idx.1] = Position::from(vert);
-        search(trie, h_prefix, v_pos, grid, next_idx, res);
-        v_pos[current_idx.1] = old;
+
+        search(seen, trie, h_prefix, v_pos, grid, next_idx, res);
+
+        if let Some(s) = seen.as_mut() {
+            for word in &words {
+                s.remove(word);
+            }
+        }
         grid.set(current_idx.0, current_idx.1, '.');
+        v_pos[current_idx.1] = old;
     }
 }
