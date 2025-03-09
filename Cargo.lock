@@ -34,24 +34,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7914353092ddf589ad78f25c5c1c21b7f80b0ff8621e7c814c3485b5306da9d"
 
 [[package]]
-name = "fid-rs"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6956a1e60e2d1412b44b4169d44a03dae518f8583d3e10090c912c105e48447"
-dependencies = [
- "rayon",
-]
-
-[[package]]
-name = "louds-rs"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "936de6c22f08e7135a921f8ada907acd0d88880c4f42b5591f634b9f1dd8e07f"
-dependencies = [
- "fid-rs",
-]
-
-[[package]]
 name = "rayon"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -72,17 +54,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "trie-rs"
-version = "0.4.2"
-source = "git+https://github.com/JonahPlusPlus/trie-rs.git?branch=label#aab3ebad5b6634cd429eb09da855c1a88f4d90fb"
-dependencies = [
- "louds-rs",
-]
-
-[[package]]
 name = "word-square-rs"
 version = "0.1.0"
 dependencies = [
  "rayon",
- "trie-rs",
 ]

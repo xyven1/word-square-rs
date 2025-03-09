@@ -1,10 +1,8 @@
 use rayon::prelude::*;
-use std::{collections::BTreeSet, env::args, fmt::Display, fs::read_to_string};
+use std::{collections::HashSet, env::args, fmt::Display, fs::read_to_string};
+mod trie;
 
-use trie_rs::{
-    inc_search::{self, IncSearch, Position},
-    set::Trie,
-};
+use crate::trie::TrieNode;
 
 #[derive(Clone)]
 struct Grid<T> {
@@ -24,11 +22,8 @@ impl<T: Clone> Grid<T> {
 }
 
 impl<T> Grid<T> {
-    fn get(&self, i: usize, j: usize) -> Option<&T> {
-        if i >= self.h || j >= self.w {
-            return None;
-        }
-        Some(&self.mem[i * self.w + j])
+    fn get(&self, i: usize, j: usize) -> &T {
+        &self.mem[i * self.w + j]
     }
     fn set(&mut self, i: usize, j: usize, v: T) {
         self.mem[i * self.w + j] = v;
@@ -39,7 +34,7 @@ impl Display for Grid<char> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for i in 0..self.h {
             for j in 0..self.w {
-                write!(f, "{} ", *self.get(i, j).unwrap())?;
+                write!(f, "{} ", *self.get(i, j))?;
             }
             writeln!(f)?;
         }
@@ -62,75 +57,59 @@ fn main() {
         }
     };
     let f = read_to_string(&p).unwrap_or_else(|e| panic!("{e}: Could not read file {p}"));
+
     let mut count = 0;
-    let trie_h = &Trie::from_iter(f.lines().filter(|v| v.len() == w).inspect(|_| count += 1));
-    println!("Loaded dictionary: {} words", count);
+    let trie_h = &TrieNode::from_iter(f.lines().filter(|v| v.len() == w).inspect(|_| count += 1));
+    println!("Loaded horizontal dictionary: {} words", count);
+    let mut count = 0;
     let trie_v = if h == w {
+        println!("Using horizontal dictionary for vertical");
         trie_h
     } else {
-        let mut count = 0;
-        &Trie::from_iter(f.lines().filter(|v| v.len() == h).inspect(|_| count += 1))
+        &TrieNode::from_iter(f.lines().filter(|v| v.len() == h).inspect(|_| count += 1))
     };
-    let unique = args_it.next().is_some();
+    if count > 0 {
+        println!("Loaded vertical dictionary: {} words", count);
+    }
 
-    let grid = Grid::new('.', w, h);
+    let unique = args_it.next().is_some() && w == h;
 
     trie_h
-        .inc_search()
         .children()
-        .chain(trie_v.inc_search().children())
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .for_each(|(&c, _)| {
-            let mut grid = grid.clone();
+        .map(|v| v.0)
+        .collect::<HashSet<_>>()
+        .intersection(&trie_v.children().map(|v| v.0).collect())
+        .par_bridge()
+        .for_each(|&c| {
+            let mut grid = Grid::new('.', w, h);
             grid.set(0, 0, c);
-            let trie_h = &trie_h;
-            let trie_v = &trie_v;
-            let mut inc_h = trie_h.inc_search();
-            inc_h.next(&c);
-            let h_pos = Position::from(inc_h);
-            let mut v_pos = vec![Position::from(trie_v.inc_search()); w];
-            let mut inc_v = trie_v.inc_search();
-            inc_v.next(&c);
-            v_pos[0] = Position::from(inc_v);
+            let h_pos = trie_h.get(c).unwrap();
+            let mut v_pos = vec![trie_v; w];
+            v_pos[0] = trie_v.get(c).unwrap();
             search(
                 trie_h,
-                trie_v,
                 h_pos,
                 &mut v_pos,
                 &mut grid,
                 (0, 1),
                 &|grid| {
-                    if unique && grid.h == grid.w {
-                        for i in 0..grid.h {
-                            let mut num_same = 0;
-                            for j in 0..grid.w {
-                                if grid.get(i, j) == grid.get(j, i) {
-                                    num_same += 1;
-                                }
-                            }
-                            if num_same == grid.w {
-                                return;
-                            }
-                        }
-                    }
                     println!("{grid}");
                     println!("=======");
                 },
+                unique,
             );
             println!("Finished searching with {c} as top-left")
         });
 }
 
-#[allow(clippy::too_many_arguments)]
 fn search(
-    trie_h: &Trie<char>,
-    trie_v: &Trie<char>,
-    h_pos: inc_search::Position,
-    v_pos: &mut [inc_search::Position],
+    h_root: &TrieNode,
+    h_pos: &TrieNode,
+    v_pos: &mut [&TrieNode],
     grid: &mut Grid<char>,
     current_idx: (usize, usize),
     res: &impl Fn(&Grid<char>),
+    unique: bool,
 ) {
     if current_idx.0 == grid.h {
         res(grid);
@@ -144,27 +123,29 @@ fn search(
         (current_idx.0, next_j)
     };
 
-    for (c, _) in IncSearch::resume(&trie_h.0, h_pos).children() {
-        let mut vert = IncSearch::resume(&trie_v.0, v_pos[current_idx.1]);
-        if vert.next_kind(c).is_none() {
+    for (c, node) in h_pos.children() {
+        if unique && grid.get(current_idx.1, current_idx.0) == &c {
             continue;
+        }
+        let old_vert = v_pos[current_idx.1];
+        let vert = match old_vert.get(c) {
+            Some(v) => v,
+            None => continue,
         };
 
-        let h_prefix = if next_idx.1 == 0 {
-            Position::from(trie_h.inc_search())
-        } else {
-            let mut horiz = IncSearch::resume(&trie_h.0, h_pos);
-            horiz.next_kind(c).unwrap();
-            Position::from(horiz)
-        };
-
-        grid.set(current_idx.0, current_idx.1, *c);
-        let old = v_pos[current_idx.1];
-        v_pos[current_idx.1] = Position::from(vert);
-
-        search(trie_h, trie_v, h_prefix, v_pos, grid, next_idx, res);
-
-        // grid.set(current_idx.0, current_idx.1, '.');
-        v_pos[current_idx.1] = old;
+        let old_char = *grid.get(current_idx.0, current_idx.1);
+        grid.set(current_idx.0, current_idx.1, c);
+        v_pos[current_idx.1] = vert;
+        search(
+            h_root,
+            if next_idx.1 == 0 { h_root } else { node },
+            v_pos,
+            grid,
+            next_idx,
+            res,
+            unique,
+        );
+        grid.set(current_idx.0, current_idx.1, old_char);
+        v_pos[current_idx.1] = old_vert;
     }
 }
