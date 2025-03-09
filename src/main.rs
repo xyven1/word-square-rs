@@ -1,10 +1,5 @@
 use rayon::prelude::*;
-use std::{
-    collections::{BTreeSet, HashSet},
-    env::args,
-    fmt::Display,
-    fs::read_to_string,
-};
+use std::{collections::BTreeSet, env::args, fmt::Display, fs::read_to_string};
 
 use trie_rs::{
     inc_search::{self, IncSearch, Position},
@@ -75,17 +70,11 @@ fn main() {
     } else {
         let mut count = 0;
         &Trie::from_iter(f.lines().filter(|v| v.len() == h).inspect(|_| count += 1))
-        // println!("Loaded vertical dictionary: {} words", count);
-        // a
     };
+    let unique = args_it.next().is_some();
 
     let grid = Grid::new('.', w, h);
 
-    let seen = if args_it.next().is_some() {
-        Some(HashSet::with_capacity(w * h))
-    } else {
-        None
-    };
     trie_h
         .inc_search()
         .children()
@@ -93,7 +82,6 @@ fn main() {
         .collect::<BTreeSet<_>>()
         .into_iter()
         .for_each(|(&c, _)| {
-            let mut seen = seen.clone();
             let mut grid = grid.clone();
             grid.set(0, 0, c);
             let trie_h = &trie_h;
@@ -106,7 +94,6 @@ fn main() {
             inc_v.next(&c);
             v_pos[0] = Position::from(inc_v);
             search(
-                &mut seen,
                 trie_h,
                 trie_v,
                 h_pos,
@@ -114,6 +101,19 @@ fn main() {
                 &mut grid,
                 (0, 1),
                 &|grid| {
+                    if unique && grid.h == grid.w {
+                        for i in 0..grid.h {
+                            let mut num_same = 0;
+                            for j in 0..grid.w {
+                                if grid.get(i, j) == grid.get(j, i) {
+                                    num_same += 1;
+                                }
+                            }
+                            if num_same == grid.w {
+                                return;
+                            }
+                        }
+                    }
                     println!("{grid}");
                     println!("=======");
                 },
@@ -124,7 +124,6 @@ fn main() {
 
 #[allow(clippy::too_many_arguments)]
 fn search(
-    seen: &mut Option<HashSet<String>>,
     trie_h: &Trie<char>,
     trie_v: &Trie<char>,
     h_pos: inc_search::Position,
@@ -145,62 +144,17 @@ fn search(
         (current_idx.0, next_j)
     };
 
-    let last_row = current_idx.0 == grid.h - 1;
-    let end_of_row = current_idx.1 == grid.w - 1;
     for (c, _) in IncSearch::resume(&trie_h.0, h_pos).children() {
-        let mut words = Vec::<String>::new();
-
-        let mut horiz = IncSearch::resume(&trie_h.0, h_pos);
-        let Some(k) = horiz.next_kind(c) else {
+        let mut vert = IncSearch::resume(&trie_v.0, v_pos[current_idx.1]);
+        if vert.next_kind(c).is_none() {
             continue;
         };
-        if end_of_row {
-            if !k.is_exact() {
-                continue;
-            }
-            let word = horiz.prefix();
-            if let Some(s) = seen.as_ref() {
-                if s.contains(&word) {
-                    continue;
-                }
-            }
-            words.push(word);
-        } else if !k.is_prefix() {
-            continue; // Simple optimization which cuts off an unnecessary recursion
-        }
-
-        let mut vert = IncSearch::resume(&trie_v.0, v_pos[current_idx.1]);
-        let Some(k) = vert.next_kind(c) else { continue };
-        if last_row {
-            if !k.is_exact() {
-                continue;
-            }
-            let word = vert.prefix();
-            if let Some(s) = seen.as_ref() {
-                if s.contains(&word) {
-                    continue;
-                }
-            }
-            words.push(word);
-        } else if !k.is_prefix() {
-            continue; // Simple optimization which cuts off an unnecessary recursion
-        }
-
-        if let Some(s) = seen.as_mut() {
-            // This will only happen on the last letter, but must be checked
-            if let [w1, w2] = &words[..] {
-                if w1 == w2 {
-                    continue;
-                }
-            }
-            for word in &words {
-                (*s).insert(word.clone());
-            }
-        }
 
         let h_prefix = if next_idx.1 == 0 {
             Position::from(trie_h.inc_search())
         } else {
+            let mut horiz = IncSearch::resume(&trie_h.0, h_pos);
+            horiz.next_kind(c).unwrap();
             Position::from(horiz)
         };
 
@@ -208,14 +162,9 @@ fn search(
         let old = v_pos[current_idx.1];
         v_pos[current_idx.1] = Position::from(vert);
 
-        search(seen, trie_h, trie_v, h_prefix, v_pos, grid, next_idx, res);
+        search(trie_h, trie_v, h_prefix, v_pos, grid, next_idx, res);
 
-        if let Some(s) = seen.as_mut() {
-            for word in &words {
-                s.remove(word);
-            }
-        }
-        grid.set(current_idx.0, current_idx.1, '.');
+        // grid.set(current_idx.0, current_idx.1, '.');
         v_pos[current_idx.1] = old;
     }
 }
