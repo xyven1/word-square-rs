@@ -1,8 +1,29 @@
 [package]
 name = "word-square-rs"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+argh = "0.1.13"
 gxhash = "3.4.1"
 rayon = "1.10.0"
+
+[profile.small]
+inherits = "release"
+opt-level = "z"
+debug = false
+strip = true
+lto = true
+codegen-units = 1
+incremental = false
+panic = "abort"
+
+[profile.fast]
+inherits = "release"
+opt-level = 3
+debug = false
+strip = "none"
+lto = true
+codegen-units = 1
+incremental = false
+panic = "abort"

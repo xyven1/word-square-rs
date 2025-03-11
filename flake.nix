@@ -1,29 +1,36 @@
 {
-  inputs = {
-    utils = {
-      url = "github:numtide/flake-utils";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    fenix = {
-      url = "github:nix-community/fenix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-  };
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
   outputs = {
     self,
-    fenix,
     nixpkgs,
-    utils,
-  }:
-    utils.lib.eachDefaultSystem (system: let
-      pkgs = import nixpkgs {inherit system;};
-    in {
-      devShells.default = pkgs.mkShell {
-        nativeBuildInputs = [
-          fenix.packages.${system}.complete.toolchain
-          (pkgs.writeShellScriptBin "lldb-dap" ''
-            ${pkgs.lib.getExe' pkgs.lldb_19 "lldb-dap"} --pre-init-command  "command script import ${pkgs.fetchFromGitHub {
+  }: let
+    forEachSystem = f:
+      nixpkgs.lib.genAttrs [
+        "aarch64-linux"
+        "aarch64-darwin"
+        "x86_64-darwin"
+        "x86_64-linux"
+      ] (system:
+        f {
+          inherit system;
+          pkgs = import nixpkgs {inherit system;};
+        });
+  in {
+    devShells = forEachSystem ({
+      pkgs,
+      system,
+    }: {
+      default = pkgs.mkShell {
+        nativeBuildInputs = with pkgs; [
+          rustc
+          cargo
+          cargo-wizard
+          rust-analyzer
+          clippy
+          rustfmt
+          (writeShellScriptBin "lldb-dap" ''
+            ${pkgs.lib.getExe' pkgs.lldb "lldb-dap"} --pre-init-command  "command script import ${pkgs.fetchFromGitHub {
               owner = "cmrschwarz";
               repo = "rust-prettifier-for-lldb";
               rev = "v0.4";
@@ -33,4 +40,21 @@
         ];
       };
     });
+    packages = forEachSystem ({
+      pkgs,
+      system,
+    }: rec {
+      word-square-rs = pkgs.rustPlatform.buildRustPackage {
+        pname = "word-square-rs";
+        version = "0.1.0";
+        src = ./.;
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+          allowBuiltinFetchGit = true;
+        };
+        RUSTFLAGS = "-C target-cpu=native";
+      };
+      default = word-square-rs;
+    });
+  };
 }

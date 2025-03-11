@@ -1,8 +1,26 @@
+use argh::FromArgs;
 use rayon::prelude::*;
-use std::{collections::HashSet, env::args, fmt::Display, fs::read_to_string};
+use std::{collections::HashSet, error::Error, fmt::Display, fs::read_to_string};
 mod trie;
 
 use crate::trie::TrieNode;
+
+#[derive(FromArgs)]
+/// Find word squares.
+struct Args {
+    /// word list
+    #[argh(positional)]
+    path: String,
+    /// width of word square
+    #[argh(positional)]
+    width: usize,
+    /// height of word square
+    #[argh(positional)]
+    height: Option<usize>,
+    /// restrict to unqique words
+    #[argh(switch, short = 'u')]
+    unique: bool,
+}
 
 #[derive(Clone)]
 struct Grid<T> {
@@ -42,25 +60,17 @@ impl Display for Grid<char> {
     }
 }
 
-fn main() {
-    let mut args_it = args();
-    let command_name = args_it.next().unwrap();
-    let (p, w, h) = match (
-        args_it.next(),
-        args_it.next().map(|v| v.parse::<usize>()),
-        args_it.next().map(|v| v.parse::<usize>()),
-    ) {
-        (Some(p), Some(Ok(w)), Some(Ok(h))) => (p, w, h),
-        _ => {
-            println!("Usage: ./{command_name} <path> <width> <height> <?unique>");
-            return;
-        }
-    };
-    let f = read_to_string(&p).unwrap_or_else(|e| panic!("{e}: Could not read file {p}"));
+fn main() -> Result<(), Box<dyn Error>> {
+    let args = argh::from_env::<Args>();
+    let f = read_to_string(&args.path)
+        .inspect_err(|_| println!("Could not read file {}", args.path))?;
+    let w = args.width;
+    let h = args.height.unwrap_or(w);
 
     let mut count = 0;
     let trie_h = &TrieNode::from_iter(f.lines().filter(|v| v.len() == w).inspect(|_| count += 1));
     println!("Loaded horizontal dictionary: {} words", count);
+
     let mut count = 0;
     let trie_v = if h == w {
         println!("Using horizontal dictionary for vertical");
@@ -72,7 +82,7 @@ fn main() {
         println!("Loaded vertical dictionary: {} words", count);
     }
 
-    let unique = args_it.next().is_some() && w == h;
+    let unique = args.unique && w == h;
 
     trie_h
         .children()
@@ -93,13 +103,13 @@ fn main() {
                 &mut grid,
                 (0, 1),
                 &|grid| {
-                    println!("{grid}");
-                    println!("=======");
+                    println!("{grid}\n======");
                 },
                 unique,
             );
             println!("Finished searching with {c} as top-left")
         });
+    Ok(())
 }
 
 fn search(
@@ -107,35 +117,35 @@ fn search(
     h_pos: &TrieNode<char>,
     v_pos: &mut [&TrieNode<char>],
     grid: &mut Grid<char>,
-    current_idx: (usize, usize),
+    pos: (usize, usize),
     res: &impl Fn(&Grid<char>),
     unique: bool,
 ) {
-    if current_idx.0 == grid.h {
+    if pos.0 == grid.h {
         res(grid);
         return;
     }
 
-    let next_j = current_idx.1 + 1;
-    let next_idx = if next_j == grid.w {
-        (current_idx.0 + 1, 0)
+    let next_col = pos.1 + 1;
+    let next_idx = if next_col == grid.w {
+        (pos.0 + 1, 0)
     } else {
-        (current_idx.0, next_j)
+        (pos.0, next_col)
     };
 
     for (c, node) in h_pos.children() {
-        if unique && grid.get(current_idx.1, current_idx.0) == c {
+        if unique && grid.get(pos.1, pos.0) == c {
             continue;
         }
-        let old_vert = v_pos[current_idx.1];
+        let old_vert = v_pos[pos.1];
         let vert = match old_vert.get(c) {
             Some(v) => v,
             None => continue,
         };
 
-        let old_char = *grid.get(current_idx.0, current_idx.1);
-        grid.set(current_idx.0, current_idx.1, *c);
-        v_pos[current_idx.1] = vert;
+        let old_char = *grid.get(pos.0, pos.1);
+        grid.set(pos.0, pos.1, *c);
+        v_pos[pos.1] = vert;
         search(
             h_root,
             if next_idx.1 == 0 { h_root } else { node },
@@ -145,7 +155,7 @@ fn search(
             res,
             unique,
         );
-        grid.set(current_idx.0, current_idx.1, old_char);
-        v_pos[current_idx.1] = old_vert;
+        grid.set(pos.0, pos.1, old_char);
+        v_pos[pos.1] = old_vert;
     }
 }
