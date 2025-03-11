@@ -5,8 +5,11 @@ edition = "2021"
 
 [dependencies]
 argh = "0.1.13"
-gxhash = "3.4.1"
+gxhash = {version = "3.4.1", optional = true}
 rayon = "1.10.0"
+
+[features]
+default = ["gxhash"]
 
 [profile.small]
 inherits = "release"

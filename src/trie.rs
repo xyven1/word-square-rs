@@ -1,6 +1,11 @@
 use std::hash::Hash;
 
+// only enable gxhash if feature is enabled
+
+#[cfg(feature = "gxhash")]
 use gxhash::{HashMap, HashMapExt};
+#[cfg(not(feature = "gxhash"))]
+use std::collections::HashMap;
 
 pub struct TrieNode<T> {
     children: HashMap<T, TrieNode<T>>,
