@@ -82,7 +82,7 @@ fn main() {
         .par_bridge()
         .for_each(|&c| {
             let mut grid = Grid::new('.', w, h);
-            grid.set(0, 0, c);
+            grid.set(0, 0, *c);
             let h_pos = trie_h.get(c).unwrap();
             let mut v_pos = vec![trie_v; w];
             v_pos[0] = trie_v.get(c).unwrap();
@@ -103,9 +103,9 @@ fn main() {
 }
 
 fn search(
-    h_root: &TrieNode,
-    h_pos: &TrieNode,
-    v_pos: &mut [&TrieNode],
+    h_root: &TrieNode<char>,
+    h_pos: &TrieNode<char>,
+    v_pos: &mut [&TrieNode<char>],
     grid: &mut Grid<char>,
     current_idx: (usize, usize),
     res: &impl Fn(&Grid<char>),
@@ -124,7 +124,7 @@ fn search(
     };
 
     for (c, node) in h_pos.children() {
-        if unique && grid.get(current_idx.1, current_idx.0) == &c {
+        if unique && grid.get(current_idx.1, current_idx.0) == c {
             continue;
         }
         let old_vert = v_pos[current_idx.1];
@@ -134,7 +134,7 @@ fn search(
         };
 
         let old_char = *grid.get(current_idx.0, current_idx.1);
-        grid.set(current_idx.0, current_idx.1, c);
+        grid.set(current_idx.0, current_idx.1, *c);
         v_pos[current_idx.1] = vert;
         search(
             h_root,
