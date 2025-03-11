@@ -20,6 +20,9 @@ struct Args {
     /// restrict to unqique words
     #[argh(switch, short = 'u')]
     unique: bool,
+    /// disable multi-threading
+    #[argh(switch)]
+    no_threading: bool,
 }
 
 #[derive(Clone)]
@@ -84,31 +87,45 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let unique = args.unique && w == h;
 
-    trie_h
-        .children()
-        .map(|v| v.0)
-        .collect::<HashSet<_>>()
-        .intersection(&trie_v.children().map(|v| v.0).collect())
-        .par_bridge()
-        .for_each(|&c| {
-            let mut grid = Grid::new('.', w, h);
-            grid.set(0, 0, *c);
-            let h_pos = trie_h.get(c).unwrap();
-            let mut v_pos = vec![trie_v; w];
-            v_pos[0] = trie_v.get(c).unwrap();
-            search(
-                trie_h,
-                h_pos,
-                &mut v_pos,
-                &mut grid,
-                (0, 1),
-                &|grid| {
-                    println!("{grid}\n======");
-                },
-                unique,
-            );
-            println!("Finished searching with {c} as top-left")
-        });
+    if args.no_threading {
+        search(
+            trie_h,
+            trie_h,
+            &mut vec![trie_v; w],
+            &mut Grid::new('.', w, h),
+            (0, 0),
+            &|grid| {
+                println!("{grid}\n======");
+            },
+            unique,
+        )
+    } else {
+        trie_h
+            .children()
+            .map(|v| v.0)
+            .collect::<HashSet<_>>()
+            .intersection(&trie_v.children().map(|v| v.0).collect())
+            .par_bridge()
+            .for_each(|&c| {
+                let mut grid = Grid::new('.', w, h);
+                grid.set(0, 0, *c);
+                let h_pos = trie_h.get(c).unwrap();
+                let mut v_pos = vec![trie_v; w];
+                v_pos[0] = trie_v.get(c).unwrap();
+                search(
+                    trie_h,
+                    h_pos,
+                    &mut v_pos,
+                    &mut grid,
+                    (0, 1),
+                    &|grid| {
+                        println!("{grid}\n======");
+                    },
+                    unique,
+                );
+                println!("Finished searching with {c} as top-left")
+            });
+    }
     Ok(())
 }
 
